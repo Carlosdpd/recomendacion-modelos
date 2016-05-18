@@ -1,0 +1,281 @@
+---
+title: "Tarea 4"
+author: "Carlos Pires"
+date: "15 de mayo de 2016"
+output: html_document
+---
+
+El presente markdown corresponde a la tarea 4 de la Materia Míneria de datos. En el se describen todos todos los procesos que se realizaron al momento de atacar los problemas presentados por la tarea.
+
+Se presentará una solución para cada uno de los problemas presentados en el documento Tarea_4.pdf
+
+Haremos uso de las siguientes librerías:
+
+```{r}
+library(arulesViz)
+library(arules)
+```
+
+A continuación, nos situaremos en el directorio de trabajo, cargaremos los datos, renombraremos ciertas columnas y cambiaremos algunos tipos de datos
+
+```{r}
+setwd("C:/Users/Carlos/Desktop/Universidad/Mineria/recomendacion-modelos-master")
+dataset = read.csv('ejemplo.csv')
+dataset_ejemplo = dataset
+dataset = read.csv('periodico.csv')
+colnames(dataset)[colnames(dataset) == 'articles'] = 'items'
+dataset$articles = ''
+dataset$items = as.character(dataset$items)
+```
+
+**1. Modificar su dataset de tal manera que no se lean los identificadores de los artículos como itemN sino
+por su tipo de contenido contenido/articuloN. Ejemplo: {item1, item10, item81} es la transacción
+{deportes/articulo1, politica/articulo1, opinion/articulo9}**
+
+Para realizar esta demanda, se creo una función la cual se basa en expresiones regulares para obtener los números de los items de cada fila, luego se encargara de tomar la lista de números de cada arreglo de items y comenzará a iterar en la misma lista para conocer los números que componen cada item de las filas, luego de ese proceso, dependiendo del número, se concatenará una sección y un artículo.
+
+NOTA IMPORTANTE: La manera en la que se desarrolló el algoritmo dió a conocer que es ineficiente en tiempo (tardando unos 15 minutos en realizar la tarea), sin embargo, el objetivo principal de realizar el proprocesamiento es cumplido.
+
+```{r}
+crear_articulos = function(databonder){
+  for(iterator in databonder$X){
+    temp2 = gregexpr("[0-9]+", databonder$items[iterator])
+    numbers = as.numeric(unique(unlist(regmatches(databonder$items[iterator], temp2))))
+    for (var in numbers){
+      var_aux = var%%9
+      if(var_aux == 0){
+        var_aux = 9
+      }
+      if(var > 0 & var < 10){
+        aux_deportes = 'deportes/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 9 & var < 19){
+        aux_deportes = 'politica/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 18 & var < 28){
+        aux_deportes = 'variedades/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 27 & var < 37){
+        aux_deportes = 'internacional/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 36 & var < 46){
+        aux_deportes = 'nacional/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 45 & var < 55){
+        aux_deportes = 'sucesos/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 54 & var < 64){
+        aux_deportes = 'comunidad/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 63 & var < 73){
+        aux_deportes = 'negocios/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+      if(var > 72){
+        aux_deportes = 'opinion/articulo'
+        result_deportes = paste(aux_deportes,var_aux, sep="")
+        databonder$articles[iterator] = paste(databonder$articles[iterator],result_deportes, sep=",")
+      }
+    }
+  }
+  return (databonder)
+}
+```
+
+Una vez realizado este proceso para obtener la nueva columna 'articles', igualamos el dataset al nuevo ya preprocesado.
+
+```{r}
+z = crear_articulos(dataset)
+dataset = z
+```
+
+Realizamos más preprocesamiento, elimnando las comas que aparecen delante de todos los articulos
+
+```{r}
+dataset$articles = substring(dataset$articles,2)
+```
+
+Y de esta manera culmina la parte de la pregunta número 1 de la tarea.
+
+En esta sección, haremos el análisis de detección de las conocidas transacciones bot, estas son descritas como transacciones que tienen menos de 20 segundos de actividad. Procedemos a encontrarlas.
+
+Lo primero que observamos, es que tenemos la fecha de entreada y la fecha de salida de cada una de las transacciones, para poder encontrar el tiempo total de cuanto duro cada una de esta transacciones, la solución propuesta fue la siguiente:
+
+Pasamos primero todos los tiempos a formato POSIX, puesto que de esta manera podemos manipular el tiempo como si fuera un entero, y de esta manera, restar la fecha de salida con la de entrada para poder obtener el tiemp total de la transacción en segundos. Puesto que ya conocemos que POSIX es un formato de tiempo el cual cuenta los segundos transcurridos desde 1/1/1970.
+
+```{r}
+dataset$entry = as.numeric(as.POSIXct(dataset$entry, origin="1970-01-01"))
+dataset$exit = as.numeric(as.POSIXct(dataset$exit, origin="1970-01-01"))
+dataset$estadia = dataset$exit - dataset$entry
+```
+
+Luego que obtuvimos el tiempo de estadia, creamos un subset en el que tomaremos todas las estadias que sean mayores a 20 segundos y asi obtendermos el dataset limpio de transacciones bot.
+
+```{r}
+dataset = subset(dataset, estadia > 20)
+```
+
+Pare realizar las siguientes partes de la tarea, procedemos a procesar el dataset para crear una matriz de transacciones y de esa manera poder generar las reglas que utilizaremos en las siguientes actividades
+
+Tomamos la columna de articulos y utilizamos los metodos para crear una matriz de transacción
+```{r}
+arts = dataset$articles
+write(arts, file = "transactions")
+matriz_trans = read.transactions("transactions", format="basket", sep=",")
+```
+
+Realizamos un summary para constatar los objetos de la transaccion
+
+
+**2. Dado un usuario nuevo que haya ingresado a n artículos (n variable), poder recomendar un artículo n+1
+y así aumentar el compromiso del cliente con su portal web. Como usted sabe, para poder calcular las
+reglas necesita como entrada MinSupport y MinConfianza. Sin embargo, el cliente desconoce cuáles
+son estos valores en consecuencia es tarea de usted determinar y justificar los mismos de acuerdo a su
+criterio.**
+
+Para crear esta función, primero generamemos las reglas de asociación utilizando la librería arules, en especifico la función apriori. Para utilizar esta función, debemos establecer dos valores, un soporte y una confianza. El soporte (que es la proporción de veces que ocurrira la parte izquierda de la regla) será un valor bajo, puesto que queremos reglas que no sean comunes, y de igual manera, tendremos una confianza (la confianza será las veces que ocurra la parte izquierda de la regla dada que ocurrió la parte derecha) alta. Al hacer esta combinación de soporte y confianza, obtendremos un conjunto de reglas que no son muy frecuentes, pero, que en el momento que ocurran, podemos asegurar con un gran nivel de confianza que se cumplirá al pie de la letra.
+
+Entonces, utilizando el método, generaremos las reglas:
+
+```{r}
+reglas_asoc = apriori(matriz_trans, parameter = list(support = 0.00002, confidence = 0.9))
+
+```
+
+De igual manera hacemos un inspect, para constatar que se realizó correctamente.
+
+```{r}
+inspect(reglas_asoc)
+```
+
+A continuación, presentamos la función propuesta para recomendar un articulo, dada una transacción.
+
+```{r}
+recomendador = function(n_articulos,reglas){
+  
+  vector_art = unlist(strsplit(n_articulos, split=","))
+  subset_reglas = subset(reglas, subset = lhs %ain% vector_art)
+  final = inspect(unique(subset_reglas@rhs[1]))
+  print ("Dado que usted leyo")
+  print (vector_art)
+  print ("Podría interesarle")
+  print (unique(final))
+}
+```
+
+La función tomará un string de n articulos y los separá cada vez que encuentre un caracter ',', generando un vector.
+
+Lugo, aplicará un subset de reglas, donde el lado izquierdo sea el vector que acabamos de generar e imprimiremos el lado derecho.
+
+Realizamos algunos ejemplos, donde podemos observar el funcionamiento de la funcion.
+
+```{r}
+recomendador("deportes/articulo1,politica/articulo3", reglas_asoc)
+```
+
+```{r}
+recomendador("negocios/articulo6", reglas_asoc)
+```
+
+```{r}
+recomendador("deportes/articulo4,politica/articulo2", reglas_asoc)
+```
+
+```{r}
+recomendador("deportes/articulo1,deportes/articulo2,deportes/articulo9", reglas_asoc)
+
+```
+
+```{r}
+recomendador("variedades/articulo9", reglas_asoc)
+```
+
+**3. Conocer las 10 visitas con mayor tiempo de estadía en la página y las 10 visitas con menor tiempo de
+estadía en la página.**
+
+Para conocer las 10 transacciones con menos estadia en la página bastará con hacer un sort del dataset e imprimri las 10 primeras transacciones
+
+```{r}
+menos = dataset
+menos = menos[order(menos$estadia),]
+head(menos, 10)
+```
+
+Y para conocer las 10 mayores, hacemos lo mismo procedimiento, ahora con el decreasing en TRUE.
+
+```{r}
+mas = dataset
+mas = mas[order(mas$estadia, decreasing = TRUE),]
+head(mas, 10)
+```
+
+
+
+**4. Conocer las 10 transacciones con mayor número de apariciones en el dataset.**
+Para conocer estas transacciones, lo que realizaremos, será crear una nueva matriz de transacciones, en la que tendremos sólo el identificador de la transacción y el artículo.
+
+```{r}
+trans_art = dataset
+trans_art = split(trans_art$articles,trans_art$X)
+trans_art = as(trans_art,"transactions")
+```
+
+Luego, en esta nueva matriz, tenemos identificadores y transacciones, a partir de alli, vemos los primeros 10 conjuntos de articulos
+
+```{r}
+head(sort(itemFrequency(trans_art), decreasing = TRUE), 10)
+```
+
+Con esta funcion podemos ver los 10 conjuntos que son más frecuentes en este dataset.
+
+**Funci�n Generadora de Curva ROC**
+
+```{r}
+generate_ROC = function(scores, real, target ){
+  dimen = 0
+  x = x1 = 0
+  y = y1 = 0
+  plot(0:1,0:1)
+  for (i in 1:length(scores)){
+    if(real[i] == target){
+      y = dimen
+      y1 = 1-scores[i]
+      points(dimen, 1-scores[i])
+      lines(c(x,y),c(x1,y1))
+      x = dimen
+      x1 = 1-scores[i]
+    }else{
+      dimen = dimen+ 0.1
+      y = dimen
+      y1 = 1-scores[i]
+      points(dimen, 1-scores[i])
+      lines(c(x,y),c(x1,y1))
+      x = dimen
+      x1 = 1-scores[i]
+
+    }
+    
+  }
+
+}
+
+generate_ROC(c(0.9, 0.8, 0.7, 0.6, 0.55, 0.54, 0.53, 0.52, 0.5, 0.5, 0.5, 0.5, 0.38, 0.37, 0.36, 0.35, 0.34, 0.33, 0.30, 0.1),c(2, 2, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 1), 2)
+
+```
+
+
